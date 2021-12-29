@@ -52,35 +52,36 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
     else:
         print("\t* Validating epoch {}:".format(epoch))
         model.eval()
-    for data in tqdm(dataloader):
-        if train:
-            optimizer.zero_grad()
-        # textf -> utterance
-        # visuf -> visual
-        # acouf -> audio
-        # qmask -> speaker mask
-        # umask -> utterance mask
-        # label -> target
-        textf, visuf, acouf, qmask, umask, label = [d.cuda() for d in data[:-1]] if cuda else data[:-1]
-        log_prob, alpha, alpha_f, alpha_b = model(textf, qmask, umask, att2=True)  # seq_len, batch, n_classes
-        lp_ = log_prob.transpose(0, 1).contiguous().view(-1, log_prob.size()[2])  # batch*seq_len, n_classes
-        labels_ = label.view(-1)  # batch*seq_len
-        loss = loss_function(lp_, labels_, umask)
+    with torch.set_grad_enabled(train):
+        for data in tqdm(dataloader):
+            if train:
+                optimizer.zero_grad()
+            # textf -> utterance
+            # visuf -> visual
+            # acouf -> audio
+            # qmask -> speaker mask
+            # umask -> utterance mask
+            # label -> target
+            textf, visuf, acouf, qmask, umask, label = [d.cuda() for d in data[:-1]] if cuda else data[:-1]
+            log_prob, alpha, alpha_f, alpha_b = model(textf, qmask, umask, att2=True)  # seq_len, batch, n_classes
+            lp_ = log_prob.transpose(0, 1).contiguous().view(-1, log_prob.size()[2])  # batch*seq_len, n_classes
+            labels_ = label.view(-1)  # batch*seq_len
+            loss = loss_function(lp_, labels_, umask)
 
-        pred_ = torch.argmax(lp_, 1)  # batch*seq_len
-        preds.append(pred_.data.cpu().numpy())
-        labels.append(labels_.data.cpu().numpy())
-        masks.append(umask.view(-1).cpu().numpy())
+            pred_ = torch.argmax(lp_, 1)  # batch*seq_len
+            preds.append(pred_.data.cpu().numpy())
+            labels.append(labels_.data.cpu().numpy())
+            masks.append(umask.view(-1).cpu().numpy())
 
-        losses.append(loss.item()*masks[-1].sum())
-        if train:
-            loss.backward()
-            optimizer.step()
-        else:
-            alphas += alpha
-            alphas_f += alpha_f
-            alphas_b += alpha_b
-            vids += data[-1]
+            losses.append(loss.item()*masks[-1].sum())
+            if train:
+                loss.backward()
+                optimizer.step()
+            else:
+                alphas += alpha
+                alphas_f += alpha_f
+                alphas_b += alpha_b
+                vids += data[-1]
 
     if preds:
         preds = np.concatenate(preds)
